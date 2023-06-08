@@ -119,7 +119,7 @@ class MineEnv(Env):
         if self.target_loc is None:
             self.target_loc = self.np_random.randint(low, high, dtype=int)
             while not self.mine_layout.is_open(self.target_loc):
-                self.target_loc = self.np_randomn.randint(low, high, dtype=int)
+                self.target_loc = self.np_random.randint(low, high, dtype=int)
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
