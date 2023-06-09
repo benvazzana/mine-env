@@ -6,13 +6,7 @@ from gym import Env
 from gym.utils import seeding
 from gym.spaces import Box, Discrete
 
-layout0 = np.array([
-    [0, 0, 0, 1, 0],
-    [0, 0, 0, 1, 0],
-    [0, 1, 1, 1, 0],
-    [0, 0, 0, 1, 0],
-    [1, 1, 0, 0, 0]
-])
+import layouts
 
 class MineLayout:
 
@@ -23,7 +17,7 @@ class MineLayout:
         'W': np.array([-1, 0]),
     }
 
-    def __init__(self, layout=layout0):
+    def __init__(self, layout=layouts.LAYOUT0):
         self.layout = layout
         self.width = layout.shape[1]
         self.height = layout.shape[0]
@@ -94,13 +88,13 @@ class MineEnv(Env):
 
     ACTION = ['N', 'E', 'S', 'W']
 
-    def __init__(self, mine_layout=None, target_loc=None, screen_size=(640, 640)):
+    def __init__(self, mine_layout=None, target_loc=None, framerate=4, screen_size=(640, 640)):
         if mine_layout is None:
             self.mine_layout = MineLayout()
-            self.mine_view = MineView(mine_layout=self.mine_layout, screen_size=screen_size)
+            self.mine_view = MineView(mine_layout=self.mine_layout, framerate=framerate, screen_size=screen_size)
         else:
             self.mine_layout = mine_layout
-            self.mine_view = MineView(mine_layout=self.mine_layout, screen_size=screen_size)
+            self.mine_view = MineView(mine_layout=self.mine_layout, framerate=framerate, screen_size=screen_size)
         self.metadata['render_fps'] = self.mine_view.framerate
         self.seed()
 
@@ -117,9 +111,9 @@ class MineEnv(Env):
 
         self.target_loc = target_loc
         if self.target_loc is None:
-            self.target_loc = self.np_random.randint(low, high, dtype=int)
-            while not self.mine_layout.is_open(self.target_loc):
-                self.target_loc = self.np_randomn.randint(low, high, dtype=int)
+            self.random_targets = True
+        else:
+            self.random_targets = False
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -146,5 +140,11 @@ class MineEnv(Env):
         if mode is not None:
             return self.mine_view.render(self.state, self.target_loc, mode)
     def reset(self):
+        if self.random_targets:
+            low = np.array([0, 0])
+            high = np.array([self.mine_width - 1, self.mine_height - 1])
+            self.target_loc = self.np_random.randint(low, high, dtype=int)
+            while not self.mine_layout.is_open(self.target_loc):
+                self.target_loc = self.np_random.randint(low, high, dtype=int)
         self.state = np.zeros(2).astype(int)
         return self.state
