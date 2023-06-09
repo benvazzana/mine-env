@@ -26,8 +26,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Trained models
 models/
+tensorboard-logs/
+.DS_STORE
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
