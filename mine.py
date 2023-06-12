@@ -104,9 +104,13 @@ class MineEnv(Env):
         # Up, down, left, right
         self.action_space = Discrete(4)
 
-        low = np.array([0, 0])
-        high = np.array([self.mine_width - 1, self.mine_height - 1])
-        # Agent position
+        # State: agent position, target position, flattened layout of obstacles
+        self.obs_size = 2 + 2 + (self.mine_width * self.mine_height)
+        low = np.zeros(self.obs_size)
+        high = np.zeros(self.obs_size)
+        high[[0, 2]] = self.mine_width - 1
+        high[[1, 3]] = self.mine_height - 1
+        high[4:] = 1
         self.observation_space = Box(low, high, dtype=int)
 
         self.target_loc = target_loc
@@ -114,18 +118,23 @@ class MineEnv(Env):
             self.random_targets = True
         else:
             self.random_targets = False
-
+    def __get_obs(self):
+        observation = np.zeros(self.obs_size).astype(int)
+        observation[[0, 1]] = self.agent_loc
+        observation[[2, 3]] = self.target_loc
+        observation[4:] = self.mine_view.layout.layout.flatten()
+        return observation
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
     def step(self, action):
         direction = self.ACTION[action]
 
-        new_loc = self.state + self.mine_layout.COMPASS[direction]
+        new_loc = self.agent_loc + self.mine_layout.COMPASS[direction]
         if self.mine_layout.is_open(new_loc):
-            self.state = new_loc
+            self.agent_loc = new_loc
         
-        if np.array_equal(self.state, self.target_loc):
+        if np.array_equal(self.agent_loc, self.target_loc):
             reward = 1
             done = True
         else:
@@ -134,11 +143,11 @@ class MineEnv(Env):
         
         info = {}
 
-        return self.state, reward, done, info
+        return self.__get_obs(), reward, done, info
 
     def render(self, mode='human'):
         if mode is not None:
-            return self.mine_view.render(self.state, self.target_loc, mode)
+            return self.mine_view.render(self.agent_loc, self.target_loc, mode)
     def reset(self):
         if self.random_targets:
             low = np.array([0, 0])
@@ -146,5 +155,5 @@ class MineEnv(Env):
             self.target_loc = self.np_random.randint(low, high, dtype=int)
             while not self.mine_layout.is_open(self.target_loc):
                 self.target_loc = self.np_random.randint(low, high, dtype=int)
-        self.state = np.zeros(2).astype(int)
-        return self.state
+        self.agent_loc = np.zeros(2).astype(int)
+        return self.__get_obs()
