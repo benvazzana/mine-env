@@ -18,16 +18,47 @@ class MineLayout:
     }
 
     def __init__(self, layout=layouts.LAYOUT0):
-        self.layout = layout
+        self.__real_layout = layout
+        self.known_layout = np.copy(layout)
         self.width = layout.shape[1]
         self.height = layout.shape[0]
+    
+    def __get_nearby_open_cell(self, cell):
+        for y in range(-1, 2):
+            for x in range(-1, 2):
+                if x == 0 and y == 0:
+                    continue
+                new_cell = cell + np.array([x, y])
+                if self.is_open(new_cell):
+                    return new_cell
+        return None
+    
+    def simulate_disaster(self, cell_shifts=8):
+        low = np.array([0, 0])
+        high = np.array([self.width - 1, self.height - 1])
+        # Make random changes to layout
+        for i in range(0, cell_shifts):
+            cell = np.random.randint(low, high, dtype=int)
+            while self.is_open(cell):
+                cell = np.random.randint(low, high, dtype=int)
+            open_cell = self.__get_nearby_open_cell(cell)
+            if open_cell is not None:
+                self.__real_layout[cell[1], cell[0]] = 0
+                self.__real_layout[open_cell[1], open_cell[0]] = 1
+    
+    def reset(self):
+        self.__real_layout = np.copy(self.known_layout)
     
     def is_open(self, cell):
         if cell[0] >= self.width or cell[1] >= self.height:
             return False
         if cell[0] < 0 or cell[1] < 0:
             return False
-        return self.layout[cell[1], cell[0]] == 0
+        return self.__real_layout[cell[1], cell[0]] == 0
+    def is_real_cell(self, cell):
+        return self.__real_layout[cell[1], cell[0]] == self.known_layout[cell[1], cell[0]]
+    def get_layout(self):
+        return self.known_layout
 
 class MineView:
 
@@ -56,12 +87,17 @@ class MineView:
         for y in range(0, self.layout.height):
             for x in range(0, self.layout.width):
                 color = None
-                if not self.layout.is_open((x, y)):
-                    color = (0, 0, 0)
+                if not self.layout.is_real_cell((x, y)) and pygame.key.get_pressed()[pygame.K_LSHIFT]:
+                    if self.layout.is_open((x, y)):
+                        color = (0, 0, 0, 50)
+                    else:
+                        color = (255, 0, 0, 100)
+                elif not self.layout.is_open((x, y)):
+                    color = (0, 0, 0, 255)
                 if np.array_equal(agent_loc, np.array([x, y])):
-                    color = (0, 0, 255)
+                    color = (0, 0, 255, 255)
                 if np.array_equal(target_loc, np.array([x, y])):
-                    color = (255, 255, 0)
+                    color = (255, 255, 0, 255)
                 
                 if color is not None:
                     pygame.draw.rect(
@@ -104,14 +140,13 @@ class MineEnv(Env):
         # Up, down, left, right
         self.action_space = Discrete(4)
 
-        # State: agent position, target position, flattened layout of obstacles
-        self.obs_size = 2 + 2 + (self.mine_width * self.mine_height)
-        low = np.zeros(self.obs_size)
-        high = np.zeros(self.obs_size)
-        high[[0, 2]] = self.mine_width - 1
-        high[[1, 3]] = self.mine_height - 1
-        high[4:] = 1
-        self.observation_space = Box(low, high, dtype=int)
+        # Observation space: Agent pos relative to target, pre-disaster mine layout
+        self.obs_size = 2 + (self.mine_width * self.mine_height)
+        bound = np.zeros(self.obs_size)
+        bound[0] = self.mine_width - 1
+        bound[1] = self.mine_height - 1
+        bound[2:] = 1
+        self.observation_space = Box(-bound, bound, dtype=int)
 
         self.target_loc = target_loc
         if self.target_loc is None:
@@ -120,9 +155,8 @@ class MineEnv(Env):
             self.random_targets = False
     def __get_obs(self):
         observation = np.zeros(self.obs_size).astype(int)
-        observation[[0, 1]] = self.agent_loc
-        observation[[2, 3]] = self.target_loc
-        observation[4:] = self.mine_view.layout.layout.flatten()
+        observation[[0, 1]] = self.agent_loc - self.target_loc
+        observation[2:] = self.mine_view.layout.get_layout().flatten()
         return observation
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -133,12 +167,12 @@ class MineEnv(Env):
         new_loc = self.agent_loc + self.mine_layout.COMPASS[direction]
         if self.mine_layout.is_open(new_loc):
             self.agent_loc = new_loc
-        
         if np.array_equal(self.agent_loc, self.target_loc):
             reward = 1
             done = True
         else:
-            reward = -0.1/(self.mine_width* self.mine_height)
+            rel_pos = self.agent_loc - self.target_loc
+            reward = -0.01*(np.inner(rel_pos, rel_pos)/(self.mine_width*self.mine_height))
             done = False
         
         info = {}
@@ -149,6 +183,8 @@ class MineEnv(Env):
         if mode is not None:
             return self.mine_view.render(self.agent_loc, self.target_loc, mode)
     def reset(self):
+        self.mine_layout.reset()
+        self.mine_layout.simulate_disaster()
         if self.random_targets:
             low = np.array([0, 0])
             high = np.array([self.mine_width - 1, self.mine_height - 1])
