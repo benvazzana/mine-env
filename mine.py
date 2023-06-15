@@ -58,8 +58,8 @@ class MineView:
                 color = None
                 if not self.layout.is_open((x, y)):
                     color = (0, 0, 0)
-                if np.array_equal(agent_loc, np.array([x, y])):
-                    color = (0, 0, 255)
+                #if np.array_equal(agent_loc, np.array([x, y])):
+                #    color = (0, 0, 255)
                 if np.array_equal(target_loc, np.array([x, y])):
                     color = (255, 255, 0)
                 
@@ -72,6 +72,13 @@ class MineView:
                             (cell_width, cell_height)
                         )
                     )
+
+        pygame.draw.circle(
+            canvas,
+            (0, 0, 255),
+            ((agent_loc + 0.5) * np.array([cell_width, cell_height])).astype(int),
+            cell_width / 3,
+        )
 
         self.window.blit(self.background, (0, 0))
         self.window.blit(canvas, (0, 0))
@@ -88,7 +95,7 @@ class MineEnv(Env):
 
     ACTION = ['N', 'E', 'S', 'W']
 
-    def __init__(self, mine_layout=None, target_loc=None, framerate=4, screen_size=(640, 640)):
+    def __init__(self, mine_layout=None, target_loc=None, framerate=60, screen_size=(640, 640)):
         if mine_layout is None:
             self.mine_layout = MineLayout()
             self.mine_view = MineView(mine_layout=self.mine_layout, framerate=framerate, screen_size=screen_size)
@@ -101,8 +108,8 @@ class MineEnv(Env):
         self.mine_width = self.mine_layout.width
         self.mine_height = self.mine_layout.height
 
-        # Up, down, left, right
-        self.action_space = Discrete(4)
+        # Direction of travel
+        self.action_space = Box(0, 359, shape=(1,))
 
         # State: agent position, target position, flattened layout of obstacles
         self.obs_size = 2 + 2 + (self.mine_width * self.mine_height)
@@ -120,7 +127,7 @@ class MineEnv(Env):
             self.random_targets = False
     def __get_obs(self):
         observation = np.zeros(self.obs_size).astype(int)
-        observation[[0, 1]] = self.agent_loc
+        observation[[0, 1]] = self.agent_loc.astype(int)
         observation[[2, 3]] = self.target_loc
         observation[4:] = self.mine_view.layout.layout.flatten()
         return observation
@@ -128,17 +135,25 @@ class MineEnv(Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
     def step(self, action):
-        direction = self.ACTION[action]
+        agent_speed = 2 / self.mine_view.framerate
+        theta = action[0] - 90
+        tolerance = 0.85
 
-        new_loc = self.agent_loc + self.mine_layout.COMPASS[direction]
-        if self.mine_layout.is_open(new_loc):
-            self.agent_loc = new_loc
+        v = np.array([np.cos(np.radians(theta)), np.sin(np.radians(theta))]) * agent_speed
+        new_loc = self.agent_loc + v
+        corner1 = np.floor(new_loc + (1 - np.array([1, 1]) * tolerance)).astype(int)
+        corner2 = np.floor(new_loc + np.array([1, 0]) * tolerance).astype(int)
+        corner3 = np.floor(new_loc + np.array([0, 1]) * tolerance).astype(int)
+        corner4 = np.floor(new_loc + np.array([1, 1]) * tolerance).astype(int)
+        if self.mine_layout.is_open(corner1) and self.mine_layout.is_open(corner2) and self.mine_layout.is_open(corner3) and self.mine_layout.is_open(corner4):
+            self.agent_loc += v
         
-        if np.array_equal(self.agent_loc, self.target_loc):
+        if np.array_equal(corner1, self.target_loc) or np.array_equal(corner2, self.target_loc) or np.array_equal(corner3, self.target_loc) or np.array_equal(corner4, self.target_loc):
             reward = 1
             done = True
         else:
-            reward = -0.1/(self.mine_width* self.mine_height)
+            diff = self.agent_loc - self.target_loc
+            reward = -0.005/(self.mine_width * self.mine_height) * np.inner(diff, diff) / self.mine_view.framerate
             done = False
         
         info = {}
@@ -155,5 +170,5 @@ class MineEnv(Env):
             self.target_loc = self.np_random.randint(low, high, dtype=int)
             while not self.mine_layout.is_open(self.target_loc):
                 self.target_loc = self.np_random.randint(low, high, dtype=int)
-        self.agent_loc = np.zeros(2).astype(int)
+        self.agent_loc = np.zeros(2)
         return self.__get_obs()
