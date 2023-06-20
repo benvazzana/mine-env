@@ -7,15 +7,9 @@ from gym.utils import seeding
 from gym.spaces import Box, Discrete
 
 import layouts
+import random
 
 class MineLayout:
-
-    COMPASS = {
-        'N': np.array([0, -1]),
-        'E': np.array([1, 0]),
-        'S': np.array([0, 1]),
-        'W': np.array([-1, 0]),
-    }
 
     def __init__(self, layout=layouts.LAYOUT0):
         self.layout = layout
@@ -48,7 +42,7 @@ class MineView:
         self.background = pygame.Surface(screen_size).convert()
         self.background.fill((150, 150, 150))
     
-    def render(self, agent_loc, target_loc, mode="human"):
+    def render(self, agent_loc, target_loc, rrt_nodes=None, mode="human"):
         canvas = pygame.Surface(self.screen_size).convert_alpha()
         canvas.fill((0, 0, 0, 0))
         cell_width = self.screen_size[0] / self.layout.width
@@ -79,6 +73,18 @@ class MineView:
             ((agent_loc + 0.5) * np.array([cell_width, cell_height])).astype(int),
             cell_width / 3,
         )
+        if rrt_nodes is not None:
+            rrt_node_color = (255, 255, 255)
+            for node in rrt_nodes:
+                x, y = node.position
+                pygame.draw.rect(
+                    canvas,
+                    rrt_node_color,
+                    pygame.Rect(
+                        np.array([x * cell_width, y * cell_height]),
+                        (cell_width, cell_height)
+                    )
+                )
 
         self.window.blit(self.background, (0, 0))
         self.window.blit(canvas, (0, 0))
@@ -88,12 +94,71 @@ class MineView:
         
         return np.flipud(np.rot90(pygame.surfarray.array3d(pygame.display.get_surface())))
 
+class RRTNode:
+    def __init__(self, position):
+        self.position = position
+        self.adjacent_nodes = []
+        self.parent = None
+
+class RRT:
+    def __init__(self, start, target, layout, max_dist=5):
+        self.start = RRTNode(start)
+        self.target = RRTNode(target)
+        self.layout = layout
+        self.open_cells = []
+        self.nodes = [self.start]
+        self.node_locs = {tuple(self.start.position)}
+        self.max_dist = max_dist
+
+        for y in range(0, layout.height):
+            for x in range(0, layout.width):
+                if layout.is_open((x, y)):
+                    self.open_cells.append((x, y))
+        self.open_cells.remove(tuple(self.start.position))
+    def plan(self):
+        while not self.goal_reached():
+            new_node = self.get_new_node()
+            self.nodes.append(new_node)
+            self.node_locs.add(tuple(new_node.position))
+            self.open_cells.remove(tuple(new_node.position))
+    def get_new_node(self):
+        random_point = np.array(random.choice(self.open_cells))
+        nearest_node = self.get_nearest_node(random_point)
+        dx = random_point - nearest_node.position
+        while np.dot(dx, dx) > self.max_dist**2:
+            random_point = np.array(random.choice(self.open_cells))
+            nearest_node = self.get_nearest_node(random_point)
+            dx = random_point - nearest_node.position
+        new_node = RRTNode(random_point)
+        new_node.parent = nearest_node
+        nearest_node.adjacent_nodes.append(new_node)
+        return new_node
+    def get_node_by_pos(self, position):
+        if position not in self.node_locs:
+            return None
+        else:
+            for node in self.nodes:
+                if np.array_equal(node.position, position):
+                    return node
+    def get_nearest_node(self, position):
+        return min(self.nodes, key=lambda node: np.dot(node.position - position, node.position - position))
+    def goal_reached(self):
+        return tuple(self.target.position) in self.node_locs
+    def remove_leaf(self, node):
+        node.parent.adjacent_nodes.remove(node)
+    def print_tree(self):
+        print(tuple(self.start.position))
+        for node in self.start.adjacent_nodes:
+            self.__print_tree(node, '\t')
+    def __print_tree(self, node, prefix=''):
+        print('{}\___{}'.format(prefix, tuple(node.position)))
+        for adj in node.adjacent_nodes:
+            self.__print_tree(adj, '{}\t'.format(prefix))
+
 class MineEnv(Env):
     metadata = {
         'render.modes': ['human', 'rgb_array']
     }
-
-    ACTION = ['N', 'E', 'S', 'W']
 
     def __init__(self, mine_layout=None, target_loc=None, framerate=60, screen_size=(640, 640)):
         if mine_layout is None:
@@ -135,26 +200,55 @@ class MineEnv(Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
     def step(self, action):
+        done = False
         agent_speed = 2 / self.mine_view.framerate
         theta = action[0] - 90
-        tolerance = 0.85
+        TOLERANCE = 0.85
 
         v = np.array([np.cos(np.radians(theta)), np.sin(np.radians(theta))]) * agent_speed
         new_loc = self.agent_loc + v
-        corner1 = np.floor(new_loc + (1 - np.array([1, 1]) * tolerance)).astype(int)
-        corner2 = np.floor(new_loc + np.array([1, 0]) * tolerance).astype(int)
-        corner3 = np.floor(new_loc + np.array([0, 1]) * tolerance).astype(int)
-        corner4 = np.floor(new_loc + np.array([1, 1]) * tolerance).astype(int)
-        if self.mine_layout.is_open(corner1) and self.mine_layout.is_open(corner2) and self.mine_layout.is_open(corner3) and self.mine_layout.is_open(corner4):
+        agent_vertices = [
+            np.floor(new_loc + (1 - (np.array([1, 1]) * TOLERANCE))).astype(int),
+            np.floor(new_loc + np.array([TOLERANCE, 1 - TOLERANCE])).astype(int),
+            np.floor(new_loc + np.array([1 - TOLERANCE, TOLERANCE])).astype(int),
+            np.floor(new_loc + np.array([1, 1]) * TOLERANCE).astype(int)
+        ]
+
+        wall_collision = False
+        for vertex in agent_vertices:
+            if not self.mine_layout.is_open(vertex):
+                wall_collision = True
+        if not wall_collision:
             self.agent_loc += v
-        
-        if np.array_equal(corner1, self.target_loc) or np.array_equal(corner2, self.target_loc) or np.array_equal(corner3, self.target_loc) or np.array_equal(corner4, self.target_loc):
+
+        target_found = False
+        for vertex in agent_vertices:
+            if np.array_equal(vertex, self.target_loc):
+                target_found = True
+
+        # Check if agent has reached RRT exploration node
+        explored = False
+        for vertex in agent_vertices:
+            exploration_nodes = self.cur_rrt_node.adjacent_nodes
+            if len(exploration_nodes) > 3:
+                exploration_nodes = exploration_nodes[0:3]
+            for node in exploration_nodes:
+                if np.array_equal(node.position, vertex):
+                    explored = True
+                    self.cur_rrt_node = node
+
+        # Remove leaf nodes from past trajectory until new exploration node is found
+        while len(self.cur_rrt_node.adjacent_nodes) == 0:
+            self.rrt.remove_leaf(self.cur_rrt_node)
+            self.cur_rrt_node = self.cur_rrt_node.parent
+
+        if target_found:
             reward = 1
             done = True
+        elif explored:
+            reward = 0.1
         else:
-            diff = self.agent_loc - self.target_loc
-            reward = -0.005/(self.mine_width * self.mine_height) * np.inner(diff, diff) / self.mine_view.framerate
-            done = False
+            reward = -0.1/(self.mine_width * self.mine_height * self.mine_view.framerate)
         
         info = {}
 
@@ -162,7 +256,7 @@ class MineEnv(Env):
 
     def render(self, mode='human'):
         if mode is not None:
-            return self.mine_view.render(self.agent_loc, self.target_loc, mode)
+            return self.mine_view.render(self.agent_loc, self.target_loc, self.cur_rrt_node.adjacent_nodes, mode=mode)
     def reset(self):
         if self.random_targets:
             low = np.array([0, 0])
@@ -171,4 +265,7 @@ class MineEnv(Env):
             while not self.mine_layout.is_open(self.target_loc):
                 self.target_loc = self.np_random.randint(low, high, dtype=int)
         self.agent_loc = np.zeros(2)
+        self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout)
+        self.cur_rrt_node = self.rrt.nodes[0]
+        self.rrt.plan()
         return self.__get_obs()
