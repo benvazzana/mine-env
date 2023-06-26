@@ -6,6 +6,8 @@ from gym import Env
 from gym.utils import seeding
 from gym.spaces import Box, Discrete
 
+from rrt import RRTNode, RRT
+
 import layouts
 import random
 
@@ -42,7 +44,7 @@ class MineView:
         self.background = pygame.Surface(screen_size).convert()
         self.background.fill((150, 150, 150))
     
-    def render(self, agent_loc, target_loc, rrt_nodes=None, mode="human"):
+    def render(self, agent_loc, target_loc, rrt_nodes=None, rrt=None, mode="human"):
         canvas = pygame.Surface(self.screen_size).convert_alpha()
         canvas.fill((0, 0, 0, 0))
         cell_width = self.screen_size[0] / self.layout.width
@@ -52,6 +54,9 @@ class MineView:
                 color = None
                 if not self.layout.is_open((x, y)):
                     color = (0, 0, 0)
+                elif rrt is not None:
+                    if (x, y) not in rrt.open_cells:
+                        color = (200, 200, 200)
                 #if np.array_equal(agent_loc, np.array([x, y])):
                 #    color = (0, 0, 255)
                 if np.array_equal(target_loc, np.array([x, y])):
@@ -94,67 +99,6 @@ class MineView:
         
         return np.flipud(np.rot90(pygame.surfarray.array3d(pygame.display.get_surface())))
 
-class RRTNode:
-    def __init__(self, position):
-        self.position = position
-        self.adjacent_nodes = []
-        self.parent = None
-
-class RRT:
-    def __init__(self, start, target, layout, max_dist=5):
-        self.start = RRTNode(start)
-        self.target = RRTNode(target)
-        self.layout = layout
-        self.open_cells = []
-        self.nodes = [self.start]
-        self.node_locs = {tuple(self.start.position)}
-        self.max_dist = max_dist
-
-        for y in range(0, layout.height):
-            for x in range(0, layout.width):
-                if layout.is_open((x, y)):
-                    self.open_cells.append((x, y))
-        self.open_cells.remove(tuple(self.start.position))
-    def plan(self):
-        while not self.goal_reached():
-            new_node = self.get_new_node()
-            self.nodes.append(new_node)
-            self.node_locs.add(tuple(new_node.position))
-            self.open_cells.remove(tuple(new_node.position))
-    def get_new_node(self):
-        random_point = np.array(random.choice(self.open_cells))
-        nearest_node = self.get_nearest_node(random_point)
-        dx = random_point - nearest_node.position
-        while np.dot(dx, dx) > self.max_dist**2:
-            random_point = np.array(random.choice(self.open_cells))
-            nearest_node = self.get_nearest_node(random_point)
-            dx = random_point - nearest_node.position
-        new_node = RRTNode(random_point)
-        new_node.parent = nearest_node
-        nearest_node.adjacent_nodes.append(new_node)
-        return new_node
-    def get_node_by_pos(self, position):
-        if position not in self.node_locs:
-            return None
-        else:
-            for node in self.nodes:
-                if np.array_equal(node.position, position):
-                    return node
-    def get_nearest_node(self, position):
-        return min(self.nodes, key=lambda node: np.dot(node.position - position, node.position - position))
-    def goal_reached(self):
-        return tuple(self.target.position) in self.node_locs
-    def remove_leaf(self, node):
-        node.parent.adjacent_nodes.remove(node)
-    def print_tree(self):
-        print(tuple(self.start.position))
-        for node in self.start.adjacent_nodes:
-            self.__print_tree(node, '\t')
-    def __print_tree(self, node, prefix=''):
-        print('{}\___{}'.format(prefix, tuple(node.position)))
-        for adj in node.adjacent_nodes:
-            self.__print_tree(adj, '{}\t'.format(prefix))
-
 class MineEnv(Env):
     metadata = {
         'render.modes': ['human', 'rgb_array']
@@ -174,15 +118,15 @@ class MineEnv(Env):
         self.mine_height = self.mine_layout.height
 
         # Direction of travel
-        self.action_space = Box(0, 359, shape=(1,))
+        self.action_space = Discrete(360)
 
-        # State: agent position, target position, flattened layout of obstacles
-        self.obs_size = 2 + 2 + (self.mine_width * self.mine_height)
+        # State: agent position, 3 RRT node positions, target position, flattened layout of obstacles
+        self.obs_size = 2 + 2 + (2 * 3) + (self.mine_width * self.mine_height)
         low = np.zeros(self.obs_size)
         high = np.zeros(self.obs_size)
-        high[[0, 2]] = self.mine_width - 1
-        high[[1, 3]] = self.mine_height - 1
-        high[4:] = 1
+        high[0:10:2] = self.mine_width - 1
+        high[1:10:2] = self.mine_height - 1
+        high[10:] = 1
         self.observation_space = Box(low, high, dtype=int)
 
         self.target_loc = target_loc
@@ -194,15 +138,20 @@ class MineEnv(Env):
         observation = np.zeros(self.obs_size).astype(int)
         observation[[0, 1]] = self.agent_loc.astype(int)
         observation[[2, 3]] = self.target_loc
-        observation[4:] = self.mine_view.layout.layout.flatten()
+        rrt_nodes = [node.position for node in self.cur_rrt_node.adjacent_nodes[0:3]]
+        while len(rrt_nodes) < 3:
+            rrt_nodes.append(self.target_loc)
+        for i in range(0, 3):
+            observation[[4 + (2 * i), 5 + (2 * i)]] = rrt_nodes[i]
+        observation[10:] = self.mine_view.layout.layout.flatten()
         return observation
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
     def step(self, action):
         done = False
-        agent_speed = 2 / self.mine_view.framerate
-        theta = action[0] - 90
+        agent_speed = 10 / self.mine_view.framerate
+        theta = action - 90
         TOLERANCE = 0.85
 
         v = np.array([np.cos(np.radians(theta)), np.sin(np.radians(theta))]) * agent_speed
@@ -236,19 +185,25 @@ class MineEnv(Env):
                 if np.array_equal(node.position, vertex):
                     explored = True
                     self.cur_rrt_node = node
+        rrt_pos = tuple((self.agent_loc + np.array([0.5, 0.5])).astype(int))
+        self.rrt.mark_explored(rrt_pos)
 
-        # Remove leaf nodes from past trajectory until new exploration node is found
-        while len(self.cur_rrt_node.adjacent_nodes) == 0:
-            self.rrt.remove_leaf(self.cur_rrt_node)
-            self.cur_rrt_node = self.cur_rrt_node.parent
+        # If a leaf is reached, regenerate tree
+        if not target_found and len(self.cur_rrt_node.adjacent_nodes) == 0:
+            open_cells = self.rrt.open_cells
+            self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout, open_cells=open_cells)
+            self.cur_rrt_node = self.rrt.nodes[0]
+            self.rrt.plan()
 
         if target_found:
             reward = 1
             done = True
         elif explored:
-            reward = 0.1
+            delta = self.agent_loc - self.target_loc
+            dist_sq = np.dot(delta, delta)
+            reward = 1 / dist_sq
         else:
-            reward = -0.1/(self.mine_width * self.mine_height * self.mine_view.framerate)
+            reward = agent_speed * -0.1/(self.mine_width * self.mine_height)
         
         info = {}
 
@@ -256,7 +211,7 @@ class MineEnv(Env):
 
     def render(self, mode='human'):
         if mode is not None:
-            return self.mine_view.render(self.agent_loc, self.target_loc, self.cur_rrt_node.adjacent_nodes, mode=mode)
+            return self.mine_view.render(self.agent_loc, self.target_loc, self.cur_rrt_node.adjacent_nodes[0:3], rrt=self.rrt, mode=mode)
     def reset(self):
         if self.random_targets:
             low = np.array([0, 0])
