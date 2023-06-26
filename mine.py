@@ -52,12 +52,28 @@ class MineLayout:
     def reset(self):
         self.__real_layout = np.copy(self.known_layout)
     
-    def is_open(self, cell):
+    def is_open(self, cell, known=False):
         if cell[0] >= self.width or cell[1] >= self.height:
             return False
         if cell[0] < 0 or cell[1] < 0:
             return False
-        return self.__real_layout[cell[1], cell[0]] == 0
+        if known:
+            return self.known_layout[cell[1], cell[0]] == 0
+        else:
+            return self.__real_layout[cell[1], cell[0]] == 0
+    def is_unreachable(self, cell, known=False):
+        if not self.is_open(cell, known):
+            return True
+        obstructed = True
+        if cell[0] > 0 and self.is_open(cell + np.array([-1, 0]), known):
+            obstructed = False
+        if cell[0] < self.width - 1 and self.is_open(cell + np.array([1, 0]), known):
+            obstructed = False
+        if cell[1] > 0 and self.is_open(cell + np.array([0, -1]), known):
+            obstructed = False
+        if cell[1] > self.height - 1 and self.is_open(cell + np.array([0, 1]), known):
+            obstructed = False
+        return obstructed
     def is_real_cell(self, cell):
         return self.__real_layout[cell[1], cell[0]] == self.known_layout[cell[1], cell[0]]
     def get_layout(self):
@@ -216,6 +232,11 @@ class MineEnv(Env):
             if np.array_equal(vertex, self.target_loc):
                 target_found = True
 
+        cell_pos = tuple((self.agent_loc + np.array([0.5, 0.5])).astype(int))
+        self.rrt.update(self.cur_rrt_node)
+        self.rrt.mark_explored(cell_pos)
+        self.mine_layout.update(cell_pos)
+
         # Check if agent has reached RRT exploration node
         explored = False
         for vertex in agent_vertices:
@@ -226,9 +247,6 @@ class MineEnv(Env):
                 if np.array_equal(node.position, vertex):
                     explored = True
                     self.cur_rrt_node = node
-        rrt_pos = tuple((self.agent_loc + np.array([0.5, 0.5])).astype(int))
-        self.rrt.mark_explored(rrt_pos)
-        self.mine_layout.update(rrt_pos)
 
         # If a leaf is reached, regenerate tree
         if not target_found and len(self.cur_rrt_node.adjacent_nodes) == 0:

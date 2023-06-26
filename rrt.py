@@ -21,11 +21,33 @@ class RRT:
             self.open_cells = []
             for y in range(0, layout.height):
                 for x in range(0, layout.width):
-                    if layout.is_open((x, y)):
+                    if layout.is_open((x, y), known=True):
                         self.open_cells.append((x, y))
             self.open_cells.remove(tuple(self.start.position))
         else:
             self.open_cells = open_cells
+    def update(self, parent):
+        for node in parent.adjacent_nodes:
+            if self.layout.is_unreachable(node.position, known=True):
+                parent.adjacent_nodes.remove(node)
+                nearest_node = None
+                min_dist = self.max_dist**2
+                for sibling in parent.adjacent_nodes:
+                    delta = np.array(node.position) - np.array(sibling.position)
+                    dist_sq = np.dot(delta, delta)
+                    if dist_sq <= min_dist:
+                        nearest_node = sibling
+                        min_dist = dist_sq
+                if nearest_node is None:
+                    for child in node.adjacent_nodes:
+                        self.remove_node(child)
+                else:
+                    for child in node.adjacent_nodes:
+                        nearest_node.adjacent_nodes.append(child)
+            elif tuple(node.position) not in self.open_cells:
+                parent.adjacent_nodes.remove(node)
+                for child in node.adjacent_nodes:
+                    parent.adjacent_nodes.append(child)
     def plan(self):
         while not self.goal_reached():
             new_node = self.get_new_node()
@@ -66,8 +88,8 @@ class RRT:
                 min_dist = dist_sq
         return nearest
     def get_nearest_open_cell(self):
-        nearest = None
-        min_dist = None
+        nearest = self.open_cells[0]
+        min_dist = np.dot(self.start.position - np.array(nearest), self.start.position - np.array(nearest))
         for cell in self.open_cells:
             if cell in self.node_locs:
                 continue
