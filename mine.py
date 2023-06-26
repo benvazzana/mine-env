@@ -29,7 +29,7 @@ class MineLayout:
                     return new_cell
         return None
     
-    def simulate_disaster(self, cell_shifts=8):
+    def simulate_disaster(self, cell_shifts=8, agent_loc=(0, 0)):
         low = np.array([0, 0])
         high = np.array([self.width - 1, self.height - 1])
         # Make random changes to layout
@@ -38,10 +38,17 @@ class MineLayout:
             while self.is_open(cell):
                 cell = np.random.randint(low, high, dtype=int)
             open_cell = self.__get_nearby_open_cell(cell)
-            if open_cell is not None:
+            if open_cell is not None and not np.array_equal(agent_loc, open_cell):
                 self.__real_layout[cell[1], cell[0]] = 0
                 self.__real_layout[open_cell[1], open_cell[0]] = 1
-    
+    def update(self, position):
+        for y in range(-1, 2):
+            for x in range(-1, 2):
+                if position[0] + x < 0 or position[0] + x >= self.width:
+                    continue
+                if position[1] + y < 0 or position[1] + y >= self.height:
+                    continue
+                self.known_layout[position[1] + y, position[0] + x] = self.__real_layout[position[1] + y, position[0] + x]
     def reset(self):
         self.__real_layout = np.copy(self.known_layout)
     
@@ -83,9 +90,9 @@ class MineView:
         for y in range(0, self.layout.height):
             for x in range(0, self.layout.width):
                 color = None
-                if not self.layout.is_real_cell((x, y)) and pygame.key.get_pressed()[pygame.K_LSHIFT]:
+                if not self.layout.is_real_cell((x, y)) and not pygame.key.get_pressed()[pygame.K_LSHIFT]:
                     if self.layout.is_open((x, y)):
-                        color = (0, 0, 0, 50)
+                        color = (0, 100, 255, 50)
                     else:
                         color = (255, 0, 0, 100)
                 elif not self.layout.is_open((x, y)):
@@ -221,6 +228,7 @@ class MineEnv(Env):
                     self.cur_rrt_node = node
         rrt_pos = tuple((self.agent_loc + np.array([0.5, 0.5])).astype(int))
         self.rrt.mark_explored(rrt_pos)
+        self.mine_layout.update(rrt_pos)
 
         # If a leaf is reached, regenerate tree
         if not target_found and len(self.cur_rrt_node.adjacent_nodes) == 0:
