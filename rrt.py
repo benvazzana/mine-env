@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 class RRTNode:
-    def __init__(self, position, weight=0.1):
+    def __init__(self, position, weight=1):
         self.position = position
         self.adjacent_nodes = []
         self.parent = None
@@ -48,8 +48,9 @@ class RRT:
                 parent.adjacent_nodes.remove(node)
                 for child in node.adjacent_nodes:
                     parent.adjacent_nodes.append(child)
+            
     def plan(self):
-        while not self.goal_reached():
+        while self.has_valid_open_cell() and not self.goal_reached():
             new_node = self.get_new_node()
             self.nodes.append(new_node)
             self.node_locs.add(tuple(new_node.position))

@@ -1,8 +1,11 @@
 from envs import MineEnv20x15
 import pygame
 
+from stable_baselines3.common.env_checker import check_env
+
 if __name__ == '__main__':
-    env = MineEnv20x15(random_target=True)
+    env = MineEnv20x15(random_target=False)
+    check_env(env)
 
     episodes = 10
     for episode in range(1, episodes+1):
@@ -10,29 +13,19 @@ if __name__ == '__main__':
         observation = env.reset()
         reward = 0
         score = 0
-        action = 0
         done = False
         while not done:
+            action = 10
             env.render()
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_w] and keys[pygame.K_a]:
-                action = 315
-            elif keys[pygame.K_w] and keys[pygame.K_d]:
-                action = 45
-            elif keys[pygame.K_s] and keys[pygame.K_a]:
-                action = 225
-            elif keys[pygame.K_s] and keys[pygame.K_d]:
-                action = 135
-            elif keys[pygame.K_w]:
+            if keys[pygame.K_a]:
+                action = 20
+            if keys[pygame.K_d]:
                 action = 0
-            elif keys[pygame.K_a]:
-                action = 270
-            elif keys[pygame.K_s]:
-                action = 180
-            elif keys[pygame.K_d]:
-                action = 90
 
             observation, reward, done, info = env.step(action)
+            #if reward > 0:
+                #env.print_obs(observation)
             score += reward
             steps += 1
         print('Episode: {}, Score: {}, Steps: {}'.format(episode, score, steps))
