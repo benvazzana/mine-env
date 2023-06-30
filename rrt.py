@@ -2,14 +2,14 @@ import numpy as np
 import random
 
 class RRTNode:
-    def __init__(self, position, weight=1):
+    def __init__(self, position, weight=100):
         self.position = position
         self.adjacent_nodes = []
         self.parent = None
         self.weight = weight
 
 class RRT:
-    def __init__(self, start, target, layout, max_dist=5, open_cells=None):
+    def __init__(self, start, target, layout, max_dist=3, open_cells=None):
         self.start = RRTNode(start.astype(int))
         self.target = target
         self.layout = layout
