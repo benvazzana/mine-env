@@ -15,13 +15,13 @@ if __name__ == '__main__':
         score = 0
         done = False
         while not done:
-            action = 10
+            action = [0]
             env.render()
             keys = pygame.key.get_pressed()
             if keys[pygame.K_a]:
-                action = 20
+                action = [0.5]
             if keys[pygame.K_d]:
-                action = 0
+                action = [-0.5]
 
             observation, reward, done, info = env.step(action)
             #if reward > 0:
