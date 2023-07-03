@@ -338,26 +338,14 @@ class MineEnv(Env):
         exploration_nodes = self.cur_rrt_node.adjacent_nodes
         if len(exploration_nodes) > 3:
             exploration_nodes = exploration_nodes[0:3]
+
         for node in exploration_nodes:
             for y in range(-1, 2):
                 for x in range(-1, 2):
                     explored_cell = cell_pos + (x, y)
                     if np.array_equal(node.position, explored_cell):
                         explored = True
-
-        # Check if agent has reached RRT exploration node
-        explored = False
-        for vertex in agent_vertices:
-            exploration_nodes = self.cur_rrt_node.adjacent_nodes
-            if len(exploration_nodes) > 3:
-                exploration_nodes = exploration_nodes[0:3]
-            for node in exploration_nodes:
-                for y in range(-1, 2):
-                    for x in range(-1, 2):
-                        explored_cell = vertex + (x, y)
-                        if np.array_equal(node.position, explored_cell):
-                            explored = True
-                            self.cur_rrt_node = node
+                        self.cur_rrt_node = node
 
         # If a leaf is reached, regenerate tree
         if not target_found and len(self.cur_rrt_node.adjacent_nodes) == 0:
