@@ -10,13 +10,13 @@ class Node:
     def __eq__(self, other):
         return self.position == other.position
 
-def shortest_path(layout, start, end):
-    start_node = Node(None, start)
-    end_node = Node(None, end)
+def shortest_path(layout, start, end, known=True):
+    start_node = Node(None, tuple(start))
+    end_node = Node(None, tuple(end))
 
     result = []
     open_list = []
-    closed_list = []
+    closed_list = set()
 
     open_list.append(start_node)
 
@@ -31,7 +31,7 @@ def shortest_path(layout, start, end):
                 current_index = index
         
         open_list.pop(current_index)
-        closed_list.append(current_node)
+        closed_list.add(current_node.position)
 
         if current_node == end_node:
             path = []
@@ -53,14 +53,14 @@ def shortest_path(layout, start, end):
             if not all(within_range):
                 continue
 
-            if not layout.is_open(node_position):
+            if not layout.is_open(node_position, known=known):
                 continue
 
             new_node = Node(current_node, node_position)
             children.append(new_node)
         
         for child in children:
-            if child in closed_list:
+            if child.position in closed_list:
                 continue
 
             child.g = current_node.g + 1
@@ -72,3 +72,7 @@ def shortest_path(layout, start, end):
                     continue
             
             open_list.append(child)
+    # print('Failed pathfind from {} to {}'.format(start, end))
+    # l = layout.get_layout()
+    # for row in l:
+    #     print(row.astype(int))
