@@ -9,6 +9,7 @@ from gym.spaces import Box, Discrete
 
 from rrt import RRTNode, RRT
 
+import astar
 import layouts
 import random
 
@@ -79,18 +80,20 @@ class MineLayout:
             return
         if self.get_cell_value(cell, known=True) < 2:
             self.known_layout[cell[1], cell[0]] = 2
-        else:
-            self.known_layout[cell[1], cell[0]] += 1 / (self.width * self.height)
+        elif self.get_cell_value(cell, known=True) < 10:
+            self.known_layout[cell[1], cell[0]] += 0.1
         if self.get_cell_value(cell, known=False) < 2:
             self.__real_layout[cell[1], cell[0]] = 2
-        else:
-            self.__real_layout[cell[1], cell[0]] += 1 / (self.width * self.height)
-    def get_cell_value(self, cell, known=False):
+        elif self.get_cell_value(cell, known=True) < 10:
+            self.__real_layout[cell[1], cell[0]] += 0.1
+    def mark_obstructed(self, cell):
+        self.known_layout[cell[1], cell[0]] = 1
+    def get_cell_value(self, cell, known=True):
         if known:
             return self.known_layout[cell[1], cell[0]]
         else:
             return self.__real_layout[cell[1], cell[0]]
-    def is_unreachable(self, cell, known=False):
+    def is_unreachable(self, cell, known=True):
         if not self.is_open(cell, known):
             return True
         obstructed = True
@@ -143,7 +146,7 @@ class MineView:
                 elif not self.layout.is_open((x, y), known=True):
                     color = (0, 0, 0, 255)
                 elif rrt is not None:
-                    if (x, y) not in rrt.open_cells:
+                    if self.layout.is_explored((x, y)):
                         color = (200, 200, 200)
                 if np.array_equal(target_loc, np.array([x, y])):
                     color = (255, 255, 0, 255)
@@ -190,7 +193,7 @@ class MineEnv(Env):
         'render.modes': ['human', 'rgb_array']
     }
 
-    SPEED = 3
+    SPEED = 10
 
     def __init__(self, mine_layout=None, target_loc=None, framerate=60, screen_size=(640, 640)):
         if mine_layout is None:
@@ -232,12 +235,18 @@ class MineEnv(Env):
         observation = np.zeros(self.obs_size).astype(np.float64)
         observation[[0, 1]] = self.agent_loc
         observation[[2, 3]] = self.target_loc
-        rrt_nodes = [node for node in self.cur_rrt_node.adjacent_nodes[0:3]]
-        while len(rrt_nodes) < 3:
-            rrt_nodes.append(RRTNode(self.target_loc, 0))
+        target_nodes = []
+        if len(self.cur_path) > 0:
+            target_nodes.append(RRTNode(self.cur_path[0], self.cur_rrt_node.weight / 2))
+        for node in self.cur_rrt_node.adjacent_nodes:
+            target_nodes.append(node)
+            if len(target_nodes) == 3:
+                break
+        while len(target_nodes) < 3:
+            target_nodes.append(RRTNode(self.target_loc, 0))
         for i in range(0, 3):
-            observation[[4 + (3 * i), 5 + (3 * i)]] = rrt_nodes[i].position
-            observation[6 + 3 * i] = rrt_nodes[i].weight
+            observation[[4 + (3 * i), 5 + (3 * i)]] = target_nodes[i].position
+            observation[6 + 3 * i] = target_nodes[i].weight
         surrounding_cells = np.zeros(5 * 5).astype(np.float64) + 1
         i = 0
         for y in range(-2, 3):
@@ -254,7 +263,7 @@ class MineEnv(Env):
         os.system('clear')
         agent_position = observation[[0, 1]]
         target_position = observation[[2, 3]]
-        rrt_nodes = observation[4:12]
+        rrt_nodes = observation[4:13]
         angle = observation[13]
         print('Agent: {}'.format(agent_position))
         print('Target: {}'.format(target_position))
@@ -327,57 +336,94 @@ class MineEnv(Env):
             self.agent_loc += v
 
         target_found = False
-        for vertex in agent_vertices:
-            if np.array_equal(vertex, self.target_loc):
-                target_found = True
-
         cell_pos = tuple((self.agent_loc + np.array([0.5, 0.5])).astype(int))
         explored = False
+        path_traversed = False
         exploration_nodes = self.cur_rrt_node.adjacent_nodes
         if len(exploration_nodes) > 3:
             exploration_nodes = exploration_nodes[0:3]
-        for node in exploration_nodes:
-            for y in range(-1, 2):
-                for x in range(-1, 2):
-                    explored_cell = np.array(cell_pos) + (x, y)
+        # for node in exploration_nodes:
+        #     for y in range(-1, 2):
+        #         for x in range(-1, 2):
+        #             explored_cell = np.array(cell_pos) + (x, y)
+        #             if np.array_equal(self.target_loc, explored_cell):
+        #                 target_found = True
+        #             if np.array_equal(node.position, explored_cell):
+        #                 explored = True
+        #                 self.cur_rrt_node = node
+        #             if len(self.cur_path) > 0:
+        #                 if np.array_equal(self.cur_path[0], explored_cell):
+        #                     path_traversed = True
+        #                     self.cur_path.pop(0)
+        for y in range(-1, 2):
+            for x in range(-1, 2):
+                explored_cell = np.array(cell_pos) + (x, y)
+                if np.array_equal(self.target_loc, explored_cell):
+                    target_found = True
+                if len(self.cur_path) > 0:
+                    if np.array_equal(self.cur_path[0], explored_cell):
+                        path_traversed = True
+                        self.cur_path.pop(0)
+                for node in exploration_nodes:
                     if np.array_equal(node.position, explored_cell):
                         explored = True
                         self.cur_rrt_node = node
-        self.rrt.update(self.cur_rrt_node)
+        self.rrt.update(self.cur_rrt_node, tuple(self.agent_loc.astype(int)))
 
-        # If a leaf is reached, regenerate tree
-        if not target_found and len(self.cur_rrt_node.adjacent_nodes) == 0:
-            open_cells = self.rrt.open_cells
-            self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout, open_cells=open_cells)
-            self.cur_rrt_node = self.rrt.nodes[0]
-            self.rrt.plan()
+        if not target_found:
+            if len(self.cur_rrt_node.adjacent_nodes) == 0:
+                self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout)
+                self.cur_rrt_node = self.rrt.nodes[0]
+                self.rrt.plan()
+            if not self.rrt.has_nearby_node(self.cur_rrt_node, self.agent_loc):
+                node_pos = tuple(self.cur_rrt_node.adjacent_nodes[0].position)
+                if len(self.cur_path) == 0 or self.cur_path[-1] != node_pos:
+                    path = astar.shortest_path(self.mine_layout, cell_pos, node_pos)
+                    if path is not None:
+                        path.pop(0)
+                        self.cur_path = path
+                    else:
+                        self.mine_layout.mark_obstructed(node_pos)
 
+        delta = self.agent_loc - self.target_loc
+        dist = np.linalg.norm(delta)
         if target_found:
             reward = 200
             done = True
         elif explored:
-            delta = self.agent_loc - self.target_loc
-            dist = np.linalg.norm(delta)
             reward = self.cur_rrt_node.weight / dist
+        elif path_traversed:
+            reward = self.cur_rrt_node.weight / (3 * dist)
         elif wall_collision:
-            delta = self.agent_loc - self.target_loc
-            dist = np.linalg.norm(delta)
-            reward = -0.25 * agent_speed * self.mine_layout.get_cell_value(cell_pos)
+            reward = -0.5 * agent_speed * self.mine_layout.get_cell_value(cell_pos)
         else:
-            reward = -self.mine_layout.get_cell_value(cell_pos) * agent_speed * 10/(self.mine_width * self.mine_height)
+            reward = -0.1 * agent_speed * self.mine_layout.get_cell_value(cell_pos)
         
-        self.rrt.mark_explored(cell_pos)
+        #self.rrt.mark_explored(cell_pos)
         explored = self.mine_layout.update(cell_pos)
         if explored and reward <= 0:
             reward = 5
+            if len(self.cur_path) > 0:
+                self.cur_path = []
+                self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout)
+                self.cur_rrt_node = self.rrt.nodes[0]
+                self.rrt.plan()
+        if not self.mine_layout.is_open(self.target_loc, known=True):
+            print('An episode was terminated because the agent was trapped')
+            done = True
 
         info = {}
 
         return self.__get_obs(), reward, done, info
 
     def render(self, mode='human'):
+        adjacent_nodes = []
+        if len(self.cur_path) > 0:
+            adjacent_nodes.append(RRTNode(self.cur_path[0], self.cur_rrt_node.weight / 2))
+        for node in self.cur_rrt_node.adjacent_nodes[0:3]:
+            adjacent_nodes.append(node)
         if mode is not None:
-            return self.mine_view.render(self.agent_loc, self.target_loc, self.cur_rrt_node.adjacent_nodes[0:3], rrt=self.rrt, mode=mode)
+            return self.mine_view.render(self.agent_loc, self.target_loc, adjacent_nodes, rrt=self.rrt, mode=mode)
     def reset(self):
         self.mine_layout.reset()
         self.mine_layout.simulate_disaster()
@@ -391,5 +437,10 @@ class MineEnv(Env):
         self.angle = 30
         self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout)
         self.cur_rrt_node = self.rrt.nodes[0]
+        while not self.rrt.is_reachable(self.agent_loc.astype(int), self.target_loc, known=False):
+            self.mine_layout.reset()
+            self.mine_layout.simulate_disaster()
         self.rrt.plan()
+        # Used to track path to distant RRT nodes
+        self.cur_path = []
         return self.__get_obs()
