@@ -20,16 +20,16 @@ if __name__ == '__main__':
             keys = pygame.key.get_pressed()
             if keys[pygame.K_w]:
                 observation, reward, done, info = env.step(0)
-                env.print_obs(observation)
+                #env.print_obs(observation)
             if keys[pygame.K_a]:
                 observation, reward, done, info = env.step(1)
-                env.print_obs(observation)
+                #env.print_obs(observation)
             if keys[pygame.K_s]:
                 observation, reward, done, info = env.step(2)
-                env.print_obs(observation)
+                #env.print_obs(observation)
             if keys[pygame.K_d]:
                 observation, reward, done, info = env.step(3)
-                env.print_obs(observation)
+                #env.print_obs(observation)
             #if reward > 0:
             score += reward
             steps += 1

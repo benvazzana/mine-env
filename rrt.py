@@ -1,15 +1,16 @@
 import numpy as np
 import random
+import collections
 
 class RRTNode:
-    def __init__(self, position, weight=10):
+    def __init__(self, position, weight=30):
         self.position = position
         self.adjacent_nodes = []
         self.parent = None
         self.weight = weight
 
 class RRT:
-    def __init__(self, start, target, layout, max_dist=3):
+    def __init__(self, start, target, layout, max_dist=2):
         self.start = RRTNode(start.astype(int))
         self.target = target
         self.layout = layout
@@ -27,7 +28,7 @@ class RRT:
     def update(self, parent):
         for node in parent.adjacent_nodes:
             if self.layout.is_unreachable(node.position):
-                #self.layout.mark_obstructed(node.position)
+                self.layout.mark_obstructed(node.position)
                 parent.adjacent_nodes.remove(node)
                 nearest_node = None
                 min_dist = self.max_dist**2
@@ -48,6 +49,11 @@ class RRT:
                 parent.adjacent_nodes.remove(node)
                 for child in node.adjacent_nodes:
                     parent.adjacent_nodes.append(child)
+    def has_nearby_node(self, cur_node, agent_pos):
+        for node in cur_node.adjacent_nodes[0:3]:
+            delta = np.array(agent_pos) - node.position
+            if np.dot(delta, delta) <= self.max_dist**2:
+                return True
     def plan(self):
         while not self.goal_reached():
             new_node = self.get_new_node()
@@ -92,17 +98,33 @@ class RRT:
     def get_nearest_open_cell(self):
         if len(self.open_cells) == 0:
             return tuple(self.target)
-        nearest = self.open_cells[0]
-        min_dist = np.dot(self.start.position - np.array(nearest), self.start.position - np.array(nearest))
-        for cell in self.open_cells:
-            if cell in self.node_locs:
+        seen = set()
+        q = collections.deque()
+        q.append(tuple(self.start.position))
+        while len(q) > 0:
+            pos = q.popleft()
+            if pos in seen or not self.layout.is_open(pos):
                 continue
-            delta = self.start.position - np.array(cell)
-            dist_sq = np.dot(delta, delta)
-            if nearest is None or dist_sq < min_dist:
-                nearest = cell
-                min_dist = dist_sq
-        return nearest
+            seen.add(pos)
+            if pos in self.open_cells:
+                return pos
+            q.append((pos[0] + 1, pos[1]))
+            q.append((pos[0], pos[1] + 1))
+            q.append((pos[0] - 1, pos[1]))
+            q.append((pos[0], pos[1] - 1))
+        return tuple(self.target)
+
+        # nearest = self.open_cells[0]
+        # min_dist = np.dot(self.start.position - np.array(nearest), self.start.position - np.array(nearest))
+        # for cell in self.open_cells:
+        #     if cell in self.node_locs:
+        #         continue
+        #     delta = self.start.position - np.array(cell)
+        #     dist_sq = np.dot(delta, delta)
+        #     if nearest is None or dist_sq < min_dist:
+        #         nearest = cell
+        #         min_dist = dist_sq
+        # return nearest
     def has_valid_open_cell(self):
         for node_pos in self.node_locs:
             for cell in self.open_cells:

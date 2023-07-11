@@ -6,7 +6,7 @@ import trainer
 
 if __name__ == '__main__':
     env = MineEnv20x15(random_target=False)
-    model = trainer.make_a2c_model('a2c-callback/best_model', env=env, n_envs=1)
+    model = trainer.make_a2c_model('a2c-2', env=env, n_envs=1)
 
     episodes = 10
     for episode in range(1, episodes+1):
