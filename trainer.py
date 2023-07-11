@@ -31,7 +31,7 @@ def make_a2c_model(name=None, env=None, n_envs=8):
     if env is None:
         env = make_vec_env(lambda: make_env(), n_envs=n_envs)
     if name is None:
-        return A2C('MlpPolicy', env, n_steps=8, use_sde=True, sde_sample_freq=16, gae_lambda=0.9, vf_coef=0.4, verbose=1, tensorboard_log='./tensorboard-logs/a2c/')
+        return A2C('MlpPolicy', env, n_steps=8, gae_lambda=0.9, vf_coef=0.4, verbose=1, tensorboard_log='./tensorboard-logs/a2c/')
     return A2C.load('models/{}'.format(name), env, n_envs=n_envs)
 
 def make_ddpg_model(name=None, env=None, n_envs=8):
@@ -54,13 +54,13 @@ if __name__ == '__main__':
     vec_env = make_vec_env(lambda: make_env(), n_envs=os.cpu_count())
     model = make_a2c_model(env=vec_env, n_envs=os.cpu_count())
 
-    stop_callback = StopTrainingOnRewardThreshold(reward_threshold=200, verbose=1)
+    stop_callback = StopTrainingOnRewardThreshold(reward_threshold=400, verbose=1)
     eval_callback = EvalCallback(vec_env,
                                  callback_on_new_best=stop_callback,
                                  eval_freq=10000,
-                                 best_model_save_path='models/a2c-callback2',
+                                 best_model_save_path='models/a2c-callback',
                                  verbose=1)
 
     model.learn(total_timesteps=10000000, callback=eval_callback)
 
-    model.save('models/a2c-5x5-obs')
+    model.save('models/a2c')

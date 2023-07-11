@@ -19,6 +19,6 @@ if __name__ == '__main__':
             env.render()
             keys = pygame.key.get_pressed()
             action, _states = model.predict(observation)
-            observation, reward, done, info = env.step(action)
+            observation, reward, done, info = env.step(int(action))
             score += reward
         print('Episode: {}, Score: {}'.format(episode, score))

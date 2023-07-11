@@ -18,14 +18,19 @@ if __name__ == '__main__':
             action = [0]
             env.render()
             keys = pygame.key.get_pressed()
+            if keys[pygame.K_w]:
+                observation, reward, done, info = env.step(0)
+                env.print_obs(observation)
             if keys[pygame.K_a]:
-                action = [0.5]
+                observation, reward, done, info = env.step(1)
+                env.print_obs(observation)
+            if keys[pygame.K_s]:
+                observation, reward, done, info = env.step(2)
+                env.print_obs(observation)
             if keys[pygame.K_d]:
-                action = [-0.5]
-
-            observation, reward, done, info = env.step(action)
+                observation, reward, done, info = env.step(3)
+                env.print_obs(observation)
             #if reward > 0:
-                #env.print_obs(observation)
             score += reward
             steps += 1
         print('Episode: {}, Score: {}, Steps: {}'.format(episode, score, steps))
