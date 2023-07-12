@@ -214,13 +214,12 @@ class MineEnv(Env):
 
         # State: agent position, 3 RRT node positions (including weights), target position,
         # surrounding obstacles
-        self.obs_size = 2 + 2 + (3 * 3) + (5 * 5)
+        self.obs_size = 2 + 2 + (5 * 5)
         low = np.zeros(self.obs_size)
         high = np.zeros(self.obs_size)
-        high[[0, 2, 4, 7, 10]] = self.mine_width - 1
-        high[[1, 3, 5, 8, 11]] = self.mine_height - 1
-        high[[6, 9, 12]] = 100 # RRT node weights
-        high[13:] = 10
+        high[[0, 2]] = self.mine_width - 1
+        high[[1, 3]] = self.mine_height - 1
+        high[4:] = 2
         self.observation_space = Box(low, high, dtype=np.float64)
 
         self.target_loc = target_loc
@@ -232,18 +231,6 @@ class MineEnv(Env):
         observation = np.zeros(self.obs_size).astype(np.float64)
         observation[[0, 1]] = self.agent_loc
         observation[[2, 3]] = self.target_loc
-        target_nodes = []
-        if len(self.cur_path) > 0:
-            target_nodes.append(RRTNode(self.cur_path[0], self.cur_rrt_node.weight / 3))
-        for node in self.cur_rrt_node.adjacent_nodes:
-            target_nodes.append(node)
-            if len(target_nodes) == 3:
-                break
-        while len(target_nodes) < 3:
-            target_nodes.append(RRTNode(self.target_loc, 0))
-        for i in range(0, 3):
-            observation[[4 + (3 * i), 5 + (3 * i)]] = target_nodes[i].position
-            observation[6 + 3 * i] = target_nodes[i].weight
         surrounding_cells = np.zeros(5 * 5).astype(np.float64) + 1
         i = 0
         for y in range(-2, 3):
@@ -253,7 +240,7 @@ class MineEnv(Env):
                 if self.mine_layout.is_open(cell, known=True):
                     surrounding_cells[i] = self.mine_layout.get_cell_value(cell, known=True)
                 i += 1
-        observation[13:] = surrounding_cells
+        observation[4:] = surrounding_cells
         return observation
     def print_obs(self, observation):
         os.system('clear')
@@ -324,17 +311,17 @@ class MineEnv(Env):
         if target_found:
             reward = 200
             done = True
-        elif explored:
-            reward = self.cur_rrt_node.weight
-            self.cur_path = []
-        elif path_traversed:
-            reward = self.cur_rrt_node.weight / 3
+        # elif explored:
+        #     reward = self.cur_rrt_node.weight
+        #     self.cur_path = []
+        # elif path_traversed:
+        #     reward = self.cur_rrt_node.weight / 3
         else:
-            reward = -0.25
+            reward = -1
 
         explored = self.mine_layout.update(tuple(self.agent_loc.astype(int)), self.target_loc)
         if explored:
-            reward = 1
+            reward = 2
             if not has_nearby_node:
                 self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout)
                 self.cur_rrt_node = self.rrt.nodes[0]
@@ -359,7 +346,8 @@ class MineEnv(Env):
         self.mine_layout.simulate_disaster()
         low = np.array([0, 0])
         high = np.array([self.mine_width - 1, self.mine_height - 1])
-        self.agent_loc = self.np_random.randint(low, high, dtype=int)
+        #self.agent_loc = self.np_random.randint(low, high, dtype=int)
+        self.agent_loc = np.array([0, 0])
         while not self.mine_layout.is_open(self.agent_loc):
             self.agent_loc = self.np_random.randint(low, high, dtype=int)
         if self.random_targets:
@@ -368,7 +356,6 @@ class MineEnv(Env):
             self.target_loc = self.np_random.randint(low, high, dtype=int)
             while not self.mine_layout.is_open(self.target_loc):
                 self.target_loc = self.np_random.randint(low, high, dtype=int)
-        self.angle = 30
         self.rrt = RRT(self.agent_loc, self.target_loc, self.mine_layout)
         self.cur_rrt_node = self.rrt.nodes[0]
         self.rrt.plan()

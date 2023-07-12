@@ -52,15 +52,15 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, sig_handler)
 
     vec_env = make_vec_env(lambda: make_env(), n_envs=os.cpu_count())
-    model = make_a2c_model(name='a2c2', env=vec_env, n_envs=os.cpu_count())
+    model = make_a2c_model(env=vec_env, n_envs=os.cpu_count())
 
     stop_callback = StopTrainingOnRewardThreshold(reward_threshold=1000, verbose=1)
     eval_callback = EvalCallback(vec_env,
                                  callback_on_new_best=stop_callback,
                                  eval_freq=10000,
-                                 best_model_save_path='models/a2c-callback2',
+                                 best_model_save_path='models/a2c-exp-callback',
                                  verbose=1)
 
     model.learn(total_timesteps=3000000, callback=eval_callback)
 
-    model.save('models/a2c-2')
+    model.save('models/a2c-exp-final')
