@@ -1,3 +1,11 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.distributions import Categorical
+import gym
+import torch.optim as optim
+
+
 class MK_A3C(nn.Module):
     def __init__(self, num_inputs, num_actions):
         super(MK_A3C, self).__init__()
