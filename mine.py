@@ -21,6 +21,7 @@ class MineLayout:
         self.known_layout = np.copy(layout)
         self.width = layout.shape[1]
         self.height = layout.shape[0]
+        self.cell_shifts = 8
     
     def __get_nearby_open_cell(self, cell):
         for y in range(-1, 2):
@@ -36,7 +37,7 @@ class MineLayout:
         low = np.array([0, 0])
         high = np.array([self.width - 1, self.height - 1])
         # Make random changes to layout
-        for i in range(0, cell_shifts):
+        for i in range(0, self.cell_shifts):
             cell = np.random.randint(low, high, dtype=int)
             while self.is_open(cell):
                 cell = np.random.randint(low, high, dtype=int)
