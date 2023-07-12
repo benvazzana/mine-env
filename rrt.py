@@ -3,7 +3,7 @@ import random
 import collections
 
 class RRTNode:
-    def __init__(self, position, weight=30):
+    def __init__(self, position, weight=50):
         self.position = position
         self.adjacent_nodes = []
         self.parent = None
