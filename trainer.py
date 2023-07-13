@@ -17,6 +17,9 @@ from envs import MineEnv20x15
 
 model = None
 
+policy_kwargs = dict(net_arch=[dict(pi=[128, 128, 128],
+                                    vf=[128, 128, 128])])
+
 def sig_handler(sig, frame):
     save = input('Save model? [y/n] ')[0] == 'y'
     if save and model is not None:
@@ -31,7 +34,8 @@ def make_a2c_model(name=None, env=None, n_envs=8):
     if env is None:
         env = make_vec_env(lambda: make_env(), n_envs=n_envs)
     if name is None:
-        return A2C('MlpPolicy', env, n_steps=8, gae_lambda=0.9, vf_coef=0.4, verbose=1, tensorboard_log='./tensorboard-logs/a2c/')
+        return A2C('MlpPolicy', env, n_steps=8, gae_lambda=0.9, vf_coef=0.4,
+                   policy_kwargs=policy_kwargs, verbose=1, tensorboard_log='./tensorboard-logs/a2c/')
     return A2C.load('models/{}'.format(name), env, n_envs=n_envs)
 
 def make_ddpg_model(name=None, env=None, n_envs=8):
@@ -58,9 +62,7 @@ if __name__ == '__main__':
     eval_callback = EvalCallback(vec_env,
                                  callback_on_new_best=stop_callback,
                                  eval_freq=10000,
-                                 best_model_save_path='models/a2c-callback2',
+                                 best_model_save_path='models/a2c-128x3',
                                  verbose=1)
 
-    model.learn(total_timesteps=3000000, callback=eval_callback)
-
-    model.save('models/a2c-rrtx')
+    model.learn(total_timesteps=5000000, callback=eval_callback)
