@@ -5,7 +5,8 @@ from stable_baselines3.common.env_checker import check_env
 
 if __name__ == '__main__':
     env = MineEnv20x15(random_target=False)
-    check_env(env)
+    #check_env(env)
+    env.mine_layout.cell_shifts = 70
 
     episodes = 10
     for episode in range(1, episodes+1):
@@ -18,14 +19,19 @@ if __name__ == '__main__':
             action = [0]
             env.render()
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_a]:
-                action = [0.5]
-            if keys[pygame.K_d]:
-                action = [-0.5]
-
-            observation, reward, done, info = env.step(action)
-            #if reward > 0:
+            if keys[pygame.K_w]:
+                observation, reward, done, info = env.step(0)
                 #env.print_obs(observation)
+            if keys[pygame.K_a]:
+                observation, reward, done, info = env.step(1)
+                #env.print_obs(observation)
+            if keys[pygame.K_s]:
+                observation, reward, done, info = env.step(2)
+                #env.print_obs(observation)
+            if keys[pygame.K_d]:
+                observation, reward, done, info = env.step(3)
+                #env.print_obs(observation)
+            #if reward > 0:
             score += reward
             steps += 1
         print('Episode: {}, Score: {}, Steps: {}'.format(episode, score, steps))
