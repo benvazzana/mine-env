@@ -158,6 +158,7 @@ class MyCustomEnv(gym.Env):
 
         return self._get_observation()
 
+	
     def _in_bounds(self, pos, agent_number):
         """Check if a position is within the grid boundaries."""
         if agent_number == AGENT1_INDEX and self.agent1_done is False:
@@ -193,49 +194,6 @@ class MyCustomEnv(gym.Env):
 
         return -1  # return a random action if there are no unexplored areas or exits in sight
 
-    def _bfs_search(self, start, agent_num):
-        # Create a queue to hold the cells to visit, starting with the current position
-        queue = deque([[(start, None)]])
-        # Create a set to hold the cells that have been visited
-        visited = [(start[0], start[1])]
-
-        path = []
-
-        while queue:
-            # Take the first path in the queue
-            path = queue.popleft()
-            # The last cell in the path is the current cell
-            current_cell, action = path[-1]
-
-            # Check if the current cell is an agent
-            # if self.shared_map[current_cell[0], current_cell[1]] == agent_num:
-            #     # If it is, return the action that was taken to get to this cell
-            #     return action
-
-            # Get the neighboring cells
-            neighbors = []
-
-            for action, delta in ACTION_DIRECTIONS.items():
-                new_pos = current_cell + np.array(delta)
-                if self._in_bounds(new_pos, agent_num):
-                    neighbors.append([new_pos, action])
-
-            for neighbor_cell in neighbors:
-                # If the neighbor cell has not been visited
-                n = (neighbor_cell[0][0], neighbor_cell[0][1])
-                #print (n)
-                if n not in visited and (self.shared_map[n[0], n[1]] != WALL_INDEX or self.shared_map[n[0], n[1]] != OBSTACLE_INDEX or self.shared_map[n[0], n[1]] != GOAL_INDEX):
-                    # Add it to the visited set
-                    visited.append((neighbor_cell[0][0], neighbor_cell[0][1]))
-                    # Add a new path to the queue with the neighbor cell added to the current path
-                    queue.append(path + [((neighbor_cell[0][0],  neighbor_cell[0][1]), neighbor_cell[1])])
-
-            # if not queue:
-            #     print (path)
-
-
-        # If all cells have been visited and no agent has been found, make a random move
-        return [path[1:]]
 
     def step(self, actions):
         _done = False
@@ -253,7 +211,7 @@ class MyCustomEnv(gym.Env):
                                   (self.pillar_loc[1][0], self.pillar_loc[1][1]), self.obstacle_positions)
 
 
-
+		# since we have two pillars, compare the path and pick the shortest one
                 path1 = pillar1_rrt.plan()
                 path2 = pillar2_rrt.plan()
                 print ("plan1:", path1)
@@ -282,10 +240,12 @@ class MyCustomEnv(gym.Env):
                 best_action2 = self._get_direction(self.agent1_pos, new_pos1)
                 # check if the agent meets the obstacles or not
                 can_move = self._perform_action(best_action2, self.agent1_pos, AGENT1_INDEX)
+                # the next move is invalid
                 if can_move is False:
                     # clear the current path, then generate a new path
                     self.agent1_rrt.clear()
-
+	
+	# agent had already reached the pillar, generate a path to the exit
         elif self.agent1_done and not self._done1:
             new_pos1 = (0, 0)
             if not self.astar_path_1:
@@ -389,6 +349,7 @@ class MyCustomEnv(gym.Env):
         self._update_agent_view(self.agent2_pos, AGENT2_INDEX)
 
 
+	# Both reached the exit
         if self._done1 == True and self._done2 == True:
             self.reward1 = 1
             self.reward2 = 1
@@ -396,6 +357,7 @@ class MyCustomEnv(gym.Env):
 
         return self._get_observation(), (self.reward1, self.reward2), _done, {}
 
+   # determine the action based on the next coordinate
     def _get_direction(self, current_pos, next_pos):
         # Compute the difference in x and y coordinates
         diff = next_pos - current_pos
@@ -405,6 +367,7 @@ class MyCustomEnv(gym.Env):
             if np.array_equal(np.array(delta), diff):
                 return action
 
+	# update position of agent
     def _update_position(self, pos, new_pos, agent_index):
         if self.fixed_map[new_pos[0], new_pos[1]] == EMPTY_INDEX:
 
@@ -534,7 +497,7 @@ class MyCustomEnv(gym.Env):
         return self._update_position(agent_pos, new_pos2, agent_index)
 
 
-
+	# observe the information at the current state
     def _update_agent_view(self, select_agent_pos, agent_number):
         # Assuming agents can only observe their current position
 
@@ -573,7 +536,7 @@ class MyCustomEnv(gym.Env):
                 self.obstacle_positions.append((select_agent_pos[0], select_agent_pos[1] - 1))
 
 
-
+	# determine if it is a valid move
     def _get_new_position(self, pos, action, agent_number):
         new_pos = pos.copy()
         # print ("ACTION", action)
@@ -632,66 +595,67 @@ class Node2:
 
 class RRT:
     def __init__(self, start, goal, discovered_obstacles, action_space=[(-1, 0), (1, 0), (0, -1), (0, 1)]):
-        self.start = Node2(start)
-        self.goal = Node2(goal)
-        self.discovered_obstacles = discovered_obstacles
-        self.action_space = action_space  # up, down, left, right
-        self.nodes = [self.start]
+        self.start = Node2(start)  # Create a start node with the given start position
+        self.goal = Node2(goal)  # Create a goal node with the given goal position
+        self.discovered_obstacles = discovered_obstacles  # List of discovered obstacles
+        self.action_space = action_space  # Available actions (up, down, left, right)
+        self.nodes = [self.start]  # List to store nodes explored by the RRT
 
     def plan(self):
         while True:
-            random_point = self.get_random_point()
-            nearest_node = self.get_nearest_node(random_point)
-            new_node = self.steer(nearest_node, random_point)
+            random_point = self.get_random_point()  # Get a random point in the maze
+            nearest_node = self.get_nearest_node(random_point)  # Find the nearest node to the random point
+            new_node = self.steer(nearest_node, random_point)  # Steer towards the random point from the nearest node
 
-            if self.collision_free(nearest_node, new_node):
-                self.nodes.append(new_node)
-                if self.reached_goal(new_node):
+            if self.collision_free(nearest_node, new_node):  # Check if the movement from nearest_node to new_node is collision-free
+                self.nodes.append(new_node)  # Add the new node to the list of explored nodes
+                if self.reached_goal(new_node):  # Check if the new node is close enough to the goal
                     break
 
-        path = self.extract_path(self.nodes[-1])  # nodes[-1] should be goal node
+        path = self.extract_path(self.nodes[-1])  # Extract the path by following parent pointers starting from the last node in nodes
         return path
 
     def get_random_point(self):
         # We assume the maze size is 10x10
-        return (random.randint(0, 10), random.randint(0, 10))
+        return (random.randint(0, 10), random.randint(0, 10))  # Generate a random point within the maze bounds
 
     def get_nearest_node(self, random_point):
-        return min(self.nodes, key=lambda node: self.distance(node.position, random_point))
+        return min(self.nodes, key=lambda node: self.distance(node.position, random_point))  # Find the node with the minimum distance to the random point
 
     def steer(self, nearest_node, random_point):
         best_next_position = nearest_node.position
         min_dist = self.distance(nearest_node.position, random_point)
 
-        for action in self.action_space:
-            next_position = tuple(map(sum, zip(nearest_node.position, action)))
-            if self.distance(next_position, random_point) < min_dist:
+        for action in self.action_space:  # Try all available actions (movement directions)
+            next_position = tuple(map(sum, zip(nearest_node.position, action)))  # Calculate the next position by adding the action to the nearest node's position
+            if self.distance(next_position, random_point) < min_dist:  # Check if the distance between the next position and the random point is smaller than the minimum distance
                 min_dist = self.distance(next_position, random_point)
                 best_next_position = next_position
 
-        new_node = Node2(best_next_position)
-        new_node.parent = nearest_node
+        new_node = Node2(best_next_position)  # Create a new node with the best next position as its position
+        new_node.parent = nearest_node  # Set the nearest node as the parent of the new node
         return new_node
 
     def collision_free(self, nearest_node, new_node):
         # If the movement from nearest_node to new_node does not collide with the pillars
-        # Note: This depends on how your pillars and the environment is defined
         return new_node.position not in self.discovered_obstacles and new_node.position[0] < GRID_SIZE and new_node.position[1] < GRID_SIZE
 
     def reached_goal(self, new_node):
         # Check if the new node is close enough to the goal
-        return self.distance(new_node.position, self.goal.position) < 1  # assuming 1 is close enough
+        return self.distance(new_node.position, self.goal.position) < 1  # Assuming a distance of 1 is close enough
 
     def extract_path(self, node):
         path = []
         while node is not None:
-            path.append(node.position)
-            node = node.parent
-        return path[::-1]  # Reverse the path
+            path.append(node.position)  # Add the position of the node to the path
+            node = node.parent  # Move to the parent node
+
+        return path[::-1]  # Reverse the path to get the correct order
 
     @staticmethod
     def distance(position_a, position_b):
-        return ((position_a[0] - position_b[0]) ** 2 + (position_a[1] - position_b[1]) ** 2) ** 0.5
+        return ((position_a[0] - position_b[0]) ** 2 + (position_a[1] - position_b[1]) ** 2) ** 0.5  # Calculate the Euclidean distance between two positions
+
 
 
 
@@ -710,69 +674,68 @@ class Node:
 
 
 def astar(maze, start, end):
-    start_node = Node(None, start)
-    end_node = Node(None, end)
+    start_node = Node(None, start)  # Create a start node with no parent and the given start position
+    end_node = Node(None, end)  # Create an end node with no parent and the given end position
 
-    open_list = []
-    closed_list = []
+    open_list = []  # List to store nodes that are open (not yet visited)
+    closed_list = []  # List to store nodes that are closed (visited)
 
-    result = []
+    result = []  # List to store the result path
 
-    open_list.append(start_node)
+    open_list.append(start_node)  # Add the start node to the open list
 
-    while len(open_list) > 0:
-        current_node = open_list[0]
-        result.append(current_node.position)
+    while len(open_list) > 0:  # Continue until there are nodes to visit in the open list
+        current_node = open_list[0]  # Get the first node from the open list
+        result.append(current_node.position)  # Add the current node's position to the result list
 
         current_index = 0
-        for index, item in enumerate(open_list):
+        for index, item in enumerate(open_list):  # Find the node with the lowest f value in the open list
             if item.f < current_node.f:
                 current_node = item
                 current_index = index
 
-        open_list.pop(current_index)
-        closed_list.append(current_node)
+        open_list.pop(current_index)  # Remove the current node from the open list
+        closed_list.append(current_node)  # Add the current node to the closed list
 
-        if current_node == end_node:
+        if current_node == end_node:  # If the current node is the end node, construct the path and return it
             path = []
             current = current_node
             while current is not None:
                 path.append(current.position)
                 current = current.parent
-            return path[::-1]
+            return path[::-1]  # Reverse the path before returning
 
         children = []
-        for new_position in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
+        for new_position in [(0, -1), (0, 1), (-1, 0), (1, 0)]:  # Check adjacent positions (up, down, left, right)
             node_position = (current_node.position[0] + new_position[0], current_node.position[1] + new_position[1])
 
             within_range = [
-                0 <= node_position[0] < len(maze),
+                0 <= node_position[0] < len(maze),  # Check if the new position is within the maze boundaries
                 0 <= node_position[1] < len(maze[0]),
             ]
             if not all(within_range):
                 continue
 
             if maze[node_position[0]][node_position[1]] == OBSTACLE_INDEX or maze[node_position[0]][node_position[1]] == WALL_INDEX:
-                continue
+                continue  # Skip this position if it is an obstacle or a wall
 
-            new_node = Node(current_node, node_position)
-            children.append(new_node)
+            new_node = Node(current_node, node_position)  # Create a new node with the current node as the parent
+            children.append(new_node)  # Add the new node to the list of children
 
         for child in children:
             if child in closed_list:
-                continue
+                continue  # Skip this child if it has already been visited
 
-            child.g = current_node.g + 1
+            child.g = current_node.g + 1  # Set the g value of the child (cost from start to current node + 1)
             child.h = ((child.position[0] - end_node.position[0]) ** 2) + (
-                    (child.position[1] - end_node.position[1]) ** 2)
-            child.f = child.g + child.h
+                    (child.position[1] - end_node.position[1]) ** 2)  # Calculate the h value (heuristic distance to end node)
+            child.f = child.g + child.h  # Calculate the f value (g + h)
 
             if len([open_node for open_node in open_list if child == open_node and child.g > open_node.g]) > 0:
-                continue
+                continue  # Skip this child if there is already a better path to it in the open list
 
-            open_list.append(child)
+            open_list.append(child)  # Add the child to the open list
 
-    # return result
 
 
 # Main
