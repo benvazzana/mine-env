@@ -129,6 +129,9 @@ class MineView:
         self.pillars = pillars
         self.clock = pygame.time.Clock()
 
+        # For drawing movement trajectory
+        self.prev_path = []
+
         self.background = pygame.Surface(screen_size).convert()
         self.background.fill((150, 150, 150))
     
@@ -139,6 +142,8 @@ class MineView:
         grid.fill((0, 0, 0, 0))
         trajectory = pygame.Surface(self.screen_size).convert_alpha()
         trajectory.fill((0, 0, 0, 0))
+        explored_region = pygame.Surface(self.screen_size).convert_alpha()
+        explored_region.fill((0, 0, 0, 0))
         cell_width = self.screen_size[0] / self.layout.width
         cell_height = self.screen_size[1] / self.layout.height
         for i in range(1, self.layout.height):
@@ -153,6 +158,20 @@ class MineView:
                 (100, 100, 100),
                 (i * cell_width, 0), (i * cell_width, self.screen_size[1])
             )
+        if len(self.prev_path) == 0:
+            self.prev_path = [agent_loc]
+        elif not np.array_equal(agent_loc - self.prev_path[-1], np.zeros(2)):
+            self.prev_path.append(agent_loc)
+        for i in range(len(self.prev_path) - 1):
+            start = ((self.prev_path[i] + 0.5) * np.array([cell_width, cell_height])).astype(int)
+            end = ((self.prev_path[i + 1] + 0.5) * np.array([cell_width, cell_height])).astype(int)
+            pygame.draw.line(
+                trajectory,
+                (0, 0, 255),
+                start, end,
+                5
+            )
+        
         for y in range(0, self.layout.height):
             for x in range(0, self.layout.width):
                 color = None
@@ -170,7 +189,7 @@ class MineView:
                     #color = (200, 200, 200)
                     # Explored cells are rendered on separate surface to go behind grid
                     pygame.draw.rect(
-                        trajectory,
+                        explored_region,
                         (200, 200, 200),
                         pygame.Rect(
                             np.array([x * cell_width, y * cell_height]),
@@ -228,6 +247,7 @@ class MineView:
                 )
 
         self.window.blit(self.background, (0, 0))
+        self.window.blit(explored_region, (0, 0))
         self.window.blit(trajectory, (0, 0))
         self.window.blit(grid, (0, 0))
         self.window.blit(canvas, (0, 0))
@@ -419,6 +439,7 @@ class MineEnv(Env):
     def reset(self):
         self.mine_layout.reset()
         self.mine_layout.simulate_disaster()
+        self.mine_view.prev_path = []
         low = np.array([0, 0])
         high = np.array([self.mine_width - 1, self.mine_height - 1])
         #self.agent_loc = self.np_random.randint(low, high, dtype=int)
