@@ -135,8 +135,24 @@ class MineView:
     def render(self, agent_loc, target_loc, rrt_nodes=None, mode="human"):
         canvas = pygame.Surface(self.screen_size).convert_alpha()
         canvas.fill((0, 0, 0, 0))
+        grid = pygame.Surface(self.screen_size).convert_alpha()
+        grid.fill((0, 0, 0, 0))
+        trajectory = pygame.Surface(self.screen_size).convert_alpha()
+        trajectory.fill((0, 0, 0, 0))
         cell_width = self.screen_size[0] / self.layout.width
         cell_height = self.screen_size[1] / self.layout.height
+        for i in range(1, self.layout.height):
+            pygame.draw.line(
+                grid,
+                (100, 100, 100),
+                (0, i * cell_height), (self.screen_size[0], i * cell_height)
+            )
+        for i in range(1, self.layout.width):
+            pygame.draw.line(
+                grid,
+                (100, 100, 100),
+                (i * cell_width, 0), (i * cell_width, self.screen_size[1])
+            )
         for y in range(0, self.layout.height):
             for x in range(0, self.layout.width):
                 color = None
@@ -151,7 +167,16 @@ class MineView:
                     # Known obstacles
                     color = (0, 0, 0, 255)
                 elif self.layout.is_explored((x, y)):
-                    color = (200, 200, 200)
+                    #color = (200, 200, 200)
+                    # Explored cells are rendered on separate surface to go behind grid
+                    pygame.draw.rect(
+                        trajectory,
+                        (200, 200, 200),
+                        pygame.Rect(
+                            np.array([x * cell_width, y * cell_height]),
+                            (cell_width, cell_height)
+                        )
+                    )
                 if np.array_equal(target_loc, np.array([x, y])):
                     color = (255, 255, 0, 255)
                 
@@ -203,6 +228,8 @@ class MineView:
                 )
 
         self.window.blit(self.background, (0, 0))
+        self.window.blit(trajectory, (0, 0))
+        self.window.blit(grid, (0, 0))
         self.window.blit(canvas, (0, 0))
         pygame.event.pump()
         pygame.display.update()
