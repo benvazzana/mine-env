@@ -5,8 +5,8 @@ from stable_baselines3.common.env_checker import check_env
 
 if __name__ == '__main__':
     env = MineEnv20x15(random_target=False)
-    #check_env(env)
-    env.mine_layout.cell_shifts = 70
+    check_env(env)
+    #env.mine_layout.cell_shifts = 70
 
     episodes = 10
     for episode in range(1, episodes+1):

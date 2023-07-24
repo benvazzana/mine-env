@@ -114,7 +114,7 @@ class MineLayout:
 
 class MineView:
 
-    def __init__(self, mine_layout=None, framerate=4, screen_size=(640, 640), name="OpenAI Gym: Mine Environment"):
+    def __init__(self, mine_layout=None, pillars=[], framerate=4, screen_size=(640, 640), name="OpenAI Gym: Mine Environment"):
         if mine_layout is None:
             self.layout = MineLayout()
         else:
@@ -126,12 +126,13 @@ class MineView:
         self.framerate = framerate
         self.screen_size = screen_size
         self.window = pygame.display.set_mode(screen_size)
+        self.pillars = pillars
         self.clock = pygame.time.Clock()
 
         self.background = pygame.Surface(screen_size).convert()
         self.background.fill((150, 150, 150))
     
-    def render(self, agent_loc, target_loc, rrt_nodes=None, rrt=None, mode="human"):
+    def render(self, agent_loc, target_loc, rrt_nodes=None, mode="human"):
         canvas = pygame.Surface(self.screen_size).convert_alpha()
         canvas.fill((0, 0, 0, 0))
         cell_width = self.screen_size[0] / self.layout.width
@@ -141,16 +142,21 @@ class MineView:
                 color = None
                 if not self.layout.is_real_cell((x, y)) and pygame.key.get_pressed()[pygame.K_LSHIFT]:
                     if self.layout.is_open((x, y)):
+                        # For open cells shown as obstructed in known layout
                         color = (0, 100, 255, 50)
                     else:
+                        # For undiscovered obstacles
                         color = (255, 0, 0, 100)
                 elif not self.layout.is_open((x, y), known=True):
+                    # Known obstacles
                     color = (0, 0, 0, 255)
                 elif self.layout.is_explored((x, y)):
                     color = (200, 200, 200)
                 if np.array_equal(target_loc, np.array([x, y])):
                     color = (255, 255, 0, 255)
                 
+                # Only render cell if obstacle or explored cell
+                # Open, unexplored cells are set to background color
                 if color is not None:
                     pygame.draw.rect(
                         canvas,
@@ -160,13 +166,29 @@ class MineView:
                             (cell_width, cell_height)
                         )
                     )
-
+        # Draw agent
         pygame.draw.circle(
             canvas,
             (0, 0, 255),
             ((agent_loc + 0.5) * np.array([cell_width, cell_height])).astype(int),
             cell_width / 3,
         )
+
+        # Pillars currently have no functionality, but they can be rendered at any
+        # location to illustrate our assumption that the agent is in contact
+        # with the nearest pillar
+        for pillar_loc in self.pillars:
+            pillar_color = (0, 255, 0, 100)
+            x, y = pillar_loc[0], pillar_loc[1]
+            pygame.draw.rect(
+                canvas,
+                pillar_color,
+                pygame.Rect(
+                    np.array([x * cell_width, y * cell_height]),
+                    (cell_width, cell_height)
+                )
+            )
+
         if rrt_nodes is not None:
             rrt_node_color = (255, 255, 255)
             for node in rrt_nodes:
@@ -200,13 +222,21 @@ class MineEnv(Env):
         3: np.array([1, 0])
     }
 
+    pillars = [
+        (3, 3),
+        (4, 11),
+        (9, 7),
+        (11, 11),
+        (14, 2)
+    ]
+
     def __init__(self, mine_layout=None, target_loc=None, framerate=4, screen_size=(640, 640)):
         if mine_layout is None:
             self.mine_layout = MineLayout()
-            self.mine_view = MineView(mine_layout=self.mine_layout, framerate=framerate, screen_size=screen_size)
+            self.mine_view = MineView(mine_layout=self.mine_layout, pillars=self.pillars, framerate=framerate, screen_size=screen_size)
         else:
             self.mine_layout = mine_layout
-            self.mine_view = MineView(mine_layout=self.mine_layout, framerate=framerate, screen_size=screen_size)
+            self.mine_view = MineView(mine_layout=self.mine_layout, pillars=self.pillars, framerate=framerate, screen_size=screen_size)
         self.metadata['render_fps'] = self.mine_view.framerate
         self.seed()
 
@@ -358,7 +388,7 @@ class MineEnv(Env):
                 adjacent_nodes.append(RRTNode(self.cur_path[0], self.cur_rrt_node.weight))
             for node in self.cur_rrt_node.adjacent_nodes[0:3-len(adjacent_nodes)]:
                 adjacent_nodes.append(node)
-            return self.mine_view.render(self.agent_loc, self.target_loc, adjacent_nodes[0:3], rrt=self.rrt, mode=mode)
+            return self.mine_view.render(self.agent_loc, self.target_loc, adjacent_nodes[0:3], mode=mode)
     def reset(self):
         self.mine_layout.reset()
         self.mine_layout.simulate_disaster()
