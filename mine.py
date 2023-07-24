@@ -114,6 +114,19 @@ class MineLayout:
 
 class MineView:
 
+    COLORS = {
+        'background':          (150, 150, 150),
+        'gridline':            (100, 100, 100),
+        'agent':               (0, 0, 255),
+        'exit':                (255, 255, 0),
+        'obstacle':            (0, 0, 0),
+        'false-obstacle':      (0, 100, 255, 50),
+        'unknown-obstacle':    (255, 0, 0, 100),
+        'pillar':              (0, 255, 0, 100),
+        'rrt':                 (255, 255, 255),
+        'explored':            (200, 200, 200),
+    }
+
     def __init__(self, mine_layout=None, pillars=[], framerate=4, screen_size=(640, 640), name="OpenAI Gym: Mine Environment"):
         if mine_layout is None:
             self.layout = MineLayout()
@@ -128,123 +141,107 @@ class MineView:
         self.window = pygame.display.set_mode(screen_size)
         self.pillars = pillars
         self.clock = pygame.time.Clock()
+        self.cell_width = self.screen_size[0] / self.layout.width
+        self.cell_height = self.screen_size[1] / self.layout.height
 
         # For drawing movement trajectory
         self.prev_path = []
 
         self.background = pygame.Surface(screen_size).convert()
-        self.background.fill((150, 150, 150))
+        self.background.fill(self.COLORS['background'])
     
-    def render(self, agent_loc, target_loc, rrt_nodes=None, mode="human"):
-        canvas = pygame.Surface(self.screen_size).convert_alpha()
-        canvas.fill((0, 0, 0, 0))
-        grid = pygame.Surface(self.screen_size).convert_alpha()
-        grid.fill((0, 0, 0, 0))
-        trajectory = pygame.Surface(self.screen_size).convert_alpha()
-        trajectory.fill((0, 0, 0, 0))
-        explored_region = pygame.Surface(self.screen_size).convert_alpha()
-        explored_region.fill((0, 0, 0, 0))
-        cell_width = self.screen_size[0] / self.layout.width
-        cell_height = self.screen_size[1] / self.layout.height
+    def _draw_cell(self, surface, x, y, color):
+        pygame.draw.rect(
+            surface,
+            color,
+            pygame.Rect(
+                np.array([x * self.cell_width, y * self.cell_height]),
+                (self.cell_width, self.cell_height)
+            )
+        )
+    
+    def _render_grid(self, surface):
+        surface.fill((0, 0, 0, 0))
+
         for i in range(1, self.layout.height):
             pygame.draw.line(
-                grid,
-                (100, 100, 100),
-                (0, i * cell_height), (self.screen_size[0], i * cell_height)
+                surface,
+                self.COLORS['gridline'],
+                (0, i * self.cell_height), (self.screen_size[0], i * self.cell_height)
             )
         for i in range(1, self.layout.width):
             pygame.draw.line(
-                grid,
-                (100, 100, 100),
-                (i * cell_width, 0), (i * cell_width, self.screen_size[1])
+                surface,
+                self.COLORS['gridline'],
+                (i * self.cell_width, 0), (i * self.cell_width, self.screen_size[1])
             )
-        if len(self.prev_path) == 0:
-            self.prev_path = [agent_loc]
-        elif not np.array_equal(agent_loc - self.prev_path[-1], np.zeros(2)):
-            self.prev_path.append(agent_loc)
+    
+    def _render_trajectory(self, surface):
+        surface.fill((0, 0, 0, 0))
         for i in range(len(self.prev_path) - 1):
-            start = ((self.prev_path[i] + 0.5) * np.array([cell_width, cell_height])).astype(int)
-            end = ((self.prev_path[i + 1] + 0.5) * np.array([cell_width, cell_height])).astype(int)
+            start = ((self.prev_path[i] + 0.5) * np.array([self.cell_width, self.cell_height])).astype(int)
+            end = ((self.prev_path[i + 1] + 0.5) * np.array([self.cell_width, self.cell_height])).astype(int)
             pygame.draw.line(
-                trajectory,
+                surface,
                 (0, 0, 255),
                 start, end,
                 5
             )
-        
+
+    
+    def _render_agent(self, surface, agent_loc):
+        pygame.draw.circle(
+            surface,
+            self.COLORS['agent'],
+            ((agent_loc + 0.5) * np.array([self.cell_width, self.cell_height])).astype(int),
+            self.cell_width / 3,
+        )
+    
+    def render(self, agent_loc, target_loc, rrt_nodes=None, mode="human"):
+        canvas = pygame.Surface(self.screen_size).convert_alpha()
+        canvas.fill((0, 0, 0, 0))
+        explored_region = pygame.Surface(self.screen_size).convert_alpha()
+        explored_region.fill((0, 0, 0, 0))
+
+        grid = pygame.Surface(self.screen_size).convert_alpha()
+        self._render_grid(grid)
+
+        trajectory = pygame.Surface(self.screen_size).convert_alpha()
+        if len(self.prev_path) == 0:
+            self.prev_path = [agent_loc]
+        elif not np.array_equal(agent_loc - self.prev_path[-1], np.zeros(2)):
+            self.prev_path.append(agent_loc)
+        self._render_trajectory(trajectory)
+
+        self._render_agent(canvas, agent_loc)
         for y in range(0, self.layout.height):
             for x in range(0, self.layout.width):
-                color = None
                 if not self.layout.is_real_cell((x, y)) and pygame.key.get_pressed()[pygame.K_LSHIFT]:
                     if self.layout.is_open((x, y)):
                         # For open cells shown as obstructed in known layout
-                        color = (0, 100, 255, 50)
+                        self._draw_cell(canvas, x, y, self.COLORS['false-obstacle'])
                     else:
                         # For undiscovered obstacles
-                        color = (255, 0, 0, 100)
+                        self._draw_cell(canvas, x, y, self.COLORS['unknown-obstacle'])
                 elif not self.layout.is_open((x, y), known=True):
                     # Known obstacles
-                    color = (0, 0, 0, 255)
+                    self._draw_cell(canvas, x, y, self.COLORS['obstacle'])
                 elif self.layout.is_explored((x, y)):
-                    #color = (200, 200, 200)
                     # Explored cells are rendered on separate surface to go behind grid
-                    pygame.draw.rect(
-                        explored_region,
-                        (200, 200, 200),
-                        pygame.Rect(
-                            np.array([x * cell_width, y * cell_height]),
-                            (cell_width, cell_height)
-                        )
-                    )
+                    self._draw_cell(explored_region, x, y, self.COLORS['explored'])
                 if np.array_equal(target_loc, np.array([x, y])):
-                    color = (255, 255, 0, 255)
-                
-                # Only render cell if obstacle or explored cell
-                # Open, unexplored cells are set to background color
-                if color is not None:
-                    pygame.draw.rect(
-                        canvas,
-                        color,
-                        pygame.Rect(
-                            np.array([x * cell_width, y * cell_height]),
-                            (cell_width, cell_height)
-                        )
-                    )
-        # Draw agent
-        pygame.draw.circle(
-            canvas,
-            (0, 0, 255),
-            ((agent_loc + 0.5) * np.array([cell_width, cell_height])).astype(int),
-            cell_width / 3,
-        )
+                    self._draw_cell(canvas, x, y, self.COLORS['exit'])
 
         # Pillars currently have no functionality, but they can be rendered at any
-        # location to illustrate our assumption that the agent is in contact
-        # with the nearest pillar
-        for pillar_loc in self.pillars:
-            pillar_color = (0, 255, 0, 100)
-            x, y = pillar_loc[0], pillar_loc[1]
-            pygame.draw.rect(
-                canvas,
-                pillar_color,
-                pygame.Rect(
-                    np.array([x * cell_width, y * cell_height]),
-                    (cell_width, cell_height)
-                )
-            )
+        # location to illustrate our assumption that the agent is in contact with
+        # the nearest pillar.
+        for x, y in self.pillars:
+            self._draw_cell(canvas, x, y, self.COLORS['pillar'])
 
-        if rrt_nodes is not None:
-            rrt_node_color = (255, 255, 255)
+        if rrt_nodes:
             for node in rrt_nodes:
                 x, y = node.position
-                pygame.draw.rect(
-                    canvas,
-                    rrt_node_color,
-                    pygame.Rect(
-                        np.array([x * cell_width, y * cell_height]),
-                        (cell_width, cell_height)
-                    )
-                )
+                self._draw_cell(canvas, x, y, self.COLORS['rrt'])
 
         self.window.blit(self.background, (0, 0))
         self.window.blit(explored_region, (0, 0))
