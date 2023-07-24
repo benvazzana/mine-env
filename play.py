@@ -4,9 +4,12 @@ import pygame
 from stable_baselines3.common.env_checker import check_env
 
 if __name__ == '__main__':
-    env = MineEnv20x15(random_target=False)
-    check_env(env)
-    #env.mine_layout.cell_shifts = 70
+    env = MineEnv20x15()
+    # Default exit location: (19, 14)
+    env.random_targets = False
+    # Default agent location: (0, 0)
+    env.randomize_agent = True
+    env.mine_layout.cell_shifts = 30
 
     episodes = 10
     for episode in range(1, episodes+1):
